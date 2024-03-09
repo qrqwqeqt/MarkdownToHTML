@@ -11,14 +11,18 @@ def markdown_to_html(markdown):
                 level = line.count('#')
                 tag = f'h{level}'
                 html += f'<{tag}>{line[level+1:].strip()}</{tag}>\n'
-            elif line.startswith('* '):
-                html += f'<li>{line[2:].strip()}</li>\n'
-            elif line.startswith('- '):
+            elif line.startswith('* ') or line.startswith('- '):
                 html += f'<li>{line[2:].strip()}</li>\n'
             else:
                 if not in_paragraph:
                     html += '<p>'
                     in_paragraph = True
+                # Перевірка курсиву
+                line = line.replace('*', '<i>').replace('_', '</i>')
+                # Перевірка жирного шрифту
+                line = line.replace('**', '<b>').replace('__', '</b>')
+                # Перевірка моноширинного шрифту
+                line = line.replace('`', '<tt>').replace('`', '</tt>')
                 html += f'{line.strip()}<br>'
         else:
             if in_paragraph:
@@ -27,6 +31,9 @@ def markdown_to_html(markdown):
     
     if in_paragraph:
         html += '</p>\n'
+    
+    return html
+
     
     return html
 
