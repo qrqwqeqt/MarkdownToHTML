@@ -1,67 +1,54 @@
+import re
 import sys
-import os
 
-def markdown_to_html(markdown):
-    html = ''
-    in_paragraph = False
-    
-    for line in markdown.split('\n'):
-        if line.strip():
-            if line.startswith('#'):
-                level = line.count('#')
-                tag = f'h{level}'
-                html += f'<{tag}>{line[level+1:].strip()}</{tag}>\n'
-            elif line.startswith('* '):
-                html += f'<li>{line[2:].strip()}</li>\n'
-            elif line.startswith('- '):
-                html += f'<li>{line[2:].strip()}</li>\n'
-            else:
-                if not in_paragraph:
-                    html += '<p>'
-                    in_paragraph = True
-                html += f'{line.strip()}<br>'
-        else:
-            if in_paragraph:
-                html += '</p>\n'
-                in_paragraph = False
-    
-    if in_paragraph:
-        html += '</p>\n'
-    
-    return html
+def parse_markdown_to_html(text):
+    # Находим блоки кода и сохраняем их содержимое
+    code_blocks = []
+    def replace_code_blocks(match):
+        code_blocks.append(match.group(1))
+        return f"@@@{len(code_blocks) - 1}@@@"
+    text = re.sub(r'```(.*?)```', replace_code_blocks, text, flags=re.DOTALL)
 
-def process_markdown_file(input_file_path, output_file_path=None):
-    try:
-        with open(input_file_path, 'r', encoding='utf-8') as file:
-            markdown_text = file.read()
-    except FileNotFoundError:
-        print("Error: Input file not found.", file=sys.stderr)
-        sys.exit(1)
-    except Exception as e:
-        print(f"Error: {e}", file=sys.stderr)
-        sys.exit(1)
+    # Обработка заголовков
+    text = re.sub(r'^(#{1,6})\s(.*?)\n', lambda match: f'<h{len(match.group(1))}>{match.group(2)}</h{len(match.group(1))}>\n', text, flags=re.MULTILINE)
     
-    html_output = markdown_to_html(markdown_text)
+    # Обработка параграфов
+    text = re.sub(r'(^|\n)(?!<h|<\/p>|<\/pre>|<\/ul>|<\/ol>|<\/blockquote>|<\/pre>|<li>|<\/li>|<\/code>)((?!<p>).+?)(?=\n\n|\n*$)', r'\1<p>\2</p>\n', text, flags=re.DOTALL)
     
-    if output_file_path:
-        try:
-            with open(output_file_path, 'w', encoding='utf-8') as file:
-                file.write(html_output)
-            print(f"HTML output written to {output_file_path}")
-        except Exception as e:
-            print(f"Error writing to output file: {e}", file=sys.stderr)
-            sys.exit(1)
-    else:
-        print(html_output)
+    # Обработка списков
+    text = re.sub(r'^(\s*)[*+-]\s(.*?)(\n|$)', lambda match: f'{match.group(1)}<li>{match.group(2)}</li>\n', text, flags=re.MULTILINE)
+    text = re.sub(r'(<li>.*?<\/li>)', r'<ul>\g<1></ul>', text, flags=re.DOTALL)
+    text = re.sub(r'(^|\n)\d+\.\s(.*?)(\n|$)', r'\1<li>\2</li>\n', text, flags=re.MULTILINE)
+    text = re.sub(r'(<li>.*?<\/li>)', r'<ol>\g<1></ol>', text, flags=re.DOTALL)
+    
+    # Заменяем звездочки на теги <strong>, учитывая обратные слеши
+    text = re.sub(r'(?<!\\)\*\*(.*?)(?<!\\)\*\*', r'<strong>\1</strong>', text)
+    # Заменяем нижние подчеркивания на теги <em>, учитывая обратные слеши
+    text = re.sub(r'(?<!\\)_(.*?)(?<!\\)_', r'<em>\1</em>', text)
+    # Заменяем backticks на теги <code>, учитывая обратные слеши
+    text = re.sub(r'(?<!\\)`(.*?)(?<!\\)`', r'<code>\1</code>', text)
+    
+    # Восстанавливаем блоки кода обратно, удаляя теги ```
+    for i, code_block in enumerate(code_blocks):
+        text = text.replace(f"@@@{i}@@@", f"<pre>{code_block}</pre>")
+
+    return text
 
 if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        print("Usage: python markdown_to_html.py input.md [output.html]", file=sys.stderr)
+    if len(sys.argv) != 3:
+        print("Потрібно вказати ім'я файлу вводу та файлу виводу")
+        print("Приклад використання: python markdown_to_html.py вхід.md вивід.html")
         sys.exit(1)
     
-    input_file_path = sys.argv[1]
-    output_file_path = None
-    if len(sys.argv) >= 3:
-        output_file_path = sys.argv[2]
+    input_file = sys.argv[1]
+    output_file = sys.argv[2]
     
-    process_markdown_file(input_file_path, output_file_path)
+    try:
+        with open(input_file, 'r', encoding='utf-8') as file:
+            input_text = file.read()
+            html_output = parse_markdown_to_html(input_text)
+            with open(output_file, 'w', encoding='utf-8') as out_file:
+                out_file.write(html_output)
+            print("HTML вивід збережено в", output_file)
+    except FileNotFoundError:
+        print("Помилка: один з файлів не знайдено")
